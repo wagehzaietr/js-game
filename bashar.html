@@ -1,0 +1,281 @@
+    <!-- Upgrade Modal -->
+    <div id="upgradeModal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); align-items:center; justify-content:center; z-index:9999;">
+        <div style="background:#212121; border:2px solid #ffffff; padding:20px; width:520px; max-width:90%; color:#fff; font-family:'Courier New', monospace; text-align:center;">
+            <div style="font-size:22px; font-weight:bold; margin-bottom:10px;">Choose an Upgrade</div>
+            <div id="upgradeOptions" style="display:flex; gap:10px; justify-content:space-between; flex-wrap:wrap;"></div>
+        </div>
+    </div>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vintage Sketch Shooter</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            user-select: none;
+        }
+        
+        body {
+            background: #f0e6d2;
+            font-family: 'Courier New', monospace;
+            overflow: hidden;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: #3a2618;
+        }
+        
+        #gameContainer {
+            position: relative;
+            width: 1100px;
+            height: 700px;
+            border: 8px solid #5d4037;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+            background: #f5f0e1;
+            overflow: hidden;
+        }
+        
+        html, body {
+            height: 100%;
+            margin: 0;
+            overflow: hidden; /* prevent scrollbars */
+        }
+        #gameContainer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+        }
+        #gameCanvas {
+            background: #f5f0e1;
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #uiOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        
+        #scoreDisplay {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            font-size: 24px;
+            font-weight: bold;
+            text-shadow: 2px 2px 0 #d7ccc8;
+            color: #5d4037;
+        }
+        
+        #healthBar {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 200px;
+            height: 30px;
+            background: #d7ccc8;
+            border: 3px solid #5d4037;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+        
+        #healthFill {
+            height: 100%;
+            width: 100%;
+            background: #8bc34a;
+            transition: width 0.3s;
+        }
+        
+        #powerupDisplay {
+            position: absolute;
+            top: 60px;
+            right: 20px;
+            width: 200px;
+            height: 30px;
+            background: #d7ccc8;
+            border: 3px solid #5d4037;
+            border-radius: 5px;
+            overflow: hidden;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 14px;
+            font-weight: bold;
+            color: #5d4037;
+        }
+        
+        #powerupBar {
+            position: absolute;
+            top: 0;
+            left: 0;
+            height: 100%;
+            width: 0%;
+            background: #ff9800;
+            transition: width 0.3s;
+        }
+        
+        #gameTitle {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            font-size: 48px;
+            font-weight: bold;
+            color: #5d4037;
+            text-shadow: 3px 3px 0 #d7ccc8;
+            z-index: 10;
+        }
+        
+        #startButton {
+            position: absolute;
+            top: 65%;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 15px 40px;
+            font-size: 24px;
+            font-family: 'Courier New', monospace;
+            background: #8d6e63;
+            color: #fff;
+            border: 3px solid #5d4037;
+            border-radius: 10px;
+            cursor: pointer;
+            pointer-events: auto;
+            transition: all 0.2s;
+            text-shadow: 1px 1px 0 #3e2723;
+        }
+        
+        #startButton:hover {
+            background: #a1887f;
+            transform: translateX(-50%) scale(1.05);
+        }
+        
+        #gameOver {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(93, 64, 55, 0.85);
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+        }
+        
+        #finalScore {
+            font-size: 48px;
+            color: #ffecb3;
+            margin-bottom: 30px;
+            text-shadow: 2px 2px 0 #3e2723;
+        }
+        
+        #restartButton {
+            padding: 15px 40px;
+            font-size: 24px;
+            font-family: 'Courier New', monospace;
+            background: #8d6e63;
+            color: #fff;
+            border: 3px solid #5d4037;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        #restartButton:hover {
+            background: #a1887f;
+            transform: scale(1.05);
+        }
+        
+        #instructions {
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            font-size: 18px;
+            color: #5d4037;
+        }
+        
+        .sketch-line {
+            stroke: #5d4037;
+            stroke-width: 2;
+            fill: none;
+        }
+        
+        .sketch-fill {
+            fill: #5d4037;
+        }
+        
+        .particle {
+            position: absolute;
+            width: 6px;
+            height: 6px;
+            background: #5d4037;
+            border-radius: 50%;
+            pointer-events: none;
+        }
+        
+        .powerup {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            pointer-events: none;
+        }
+        
+        #soundToggle {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #8d6e63;
+            color: white;
+            border: 2px solid #5d4037;
+            border-radius: 5px;
+            padding: 5px 10px;
+            font-family: 'Courier New', monospace;
+            cursor: pointer;
+            pointer-events: auto;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="1280" height="720"></canvas>
+        
+        <div id="uiOverlay">
+            <div id="scoreDisplay">SCORE: 0</div>
+            <div id="healthBar">
+                <div id="healthFill"></div>
+            </div>
+            <div id="powerupDisplay">
+                <div id="powerupBar"></div>
+                <span>POWER: NONE</span>
+            </div>
+            <div id="gameTitle">VINTAGE SKETCH SHOOTER</div>
+            <button id="startButton">START MISSION</button>
+            <button id="soundToggle">🔊 SOUND ON</button>
+            <div id="instructions">MOVE: WASD or ARROWS | SHOOT: HOLD MOUSE | ENERGY BALL: E | PAUSE: ESC</div>
+        </div>
+        
+        <div id="gameOver">
+            <div id="finalScore">SCORE: 0</div>
+            <button id="restartButton">PLAY AGAIN</button>
+        </div>
+        <script src="game.js"></script>
+    </div>
+</body>
+</html>
