@@ -71,10 +71,30 @@ let powerupSpawnRate = 15000; // milliseconds
 let autoFiring = true; // auto-fire state for autofire powerup
 let holdingFire = false; // true while mouse is held down
 
+// Shotgun power-up state
+let hasShotgun = false;
+let shotgunAmmo = 0;
+const SHOTGUN_MAX_AMMO = 12; // 12 shots
+const SHOTGUN_PELLETS = 5; // 5 pellets per shot
+const SHOTGUN_SPREAD = 0.4; // spread angle in radians
+
 // Energy Ball ability (charged by kills, fire with 'E')
 let energyBallCharge = 0;      // 0..100
 const ENERGY_BALL_MAX = 100;
 let energyBall = null;         // {x,y,vx,vy,radius,damage,life,maxLife}
+
+// Map power-up type to its image (if available)
+function getPowerupImage(type) {
+    switch (type) {
+        case 'health': return heartPowerupImg;
+        case 'triple': return triplePowerupImg;
+        case 'spread': return spreadPowerupImg;
+        case 'rapid': return rapidPowerupImg;
+        case 'autofire': return autofirePowerupImg;
+        case 'shotgun': return shotgunImg;
+        default: return null; // e.g., 'mystery' has no sprite specified
+    }
+}
 const ENERGY_BALL_SPEED = 5.0; // slow
 const ENERGY_BALL_RADIUS = 58; // big
 const ENERGY_BALL_DAMAGE_ENEMY = 5; // per hit on regular enemy
@@ -83,29 +103,54 @@ const ENERGY_BALL_RANGE = 2200;     // max travel distance in px
 
 // Sprites
 const enemyImg = new Image();
-enemyImg.src = 'images/enemymalek1.png';
+enemyImg.src = 'assets/images/enemymalek1.png';
 const enemyImg2 = new Image();
-enemyImg2.src = 'images/enemymalek2.png';
+enemyImg2.src = 'assets/images/enemymalek2.png';
 const enemyImg3 = new Image();
-enemyImg3.src = 'images/enemymalek3.png';
+enemyImg3.src = 'assets/images/enemymalek3.png';
+
+// New animated enemy frames
+const frameOneImg = new Image();
+frameOneImg.src = 'assets/new-images/frame-one-img.png';
+const frameTwoImg = new Image();
+frameTwoImg.src = 'assets/new-images/frame-two-img.png';
+const frameThreeImg = new Image();
+frameThreeImg.src = 'assets/new-images/frame-three-img.png';
+const frameFourImg = new Image();
+frameFourImg.src = 'assets/new-images/frame-four-img.png';
 const tankImg = new Image();
-tankImg.src = 'images/enemy2.png';
+tankImg.src = 'assets/images/enemy2.png';
 const turretImg = new Image();
-turretImg.src = 'images/gun.png';
+turretImg.src = 'assets/images/gun.png';
+// Shotgun sprite for player hand
+const shotgunImg = new Image();
+shotgunImg.src = 'assets/images/shotgun-img.png';
 // Bullet sprite
 const bulletImg = new Image();
-bulletImg.src = 'images/bullet-img.png';
+bulletImg.src = 'assets/images/bullet-img.png';
 // Hit effect sprite
 const hitEffectImg = new Image();
-hitEffectImg.src = 'images/hit-effect.png';
+hitEffectImg.src = 'assets/images/hit-effect.png';
 // Boss sprites
 const bossImg1 = new Image();
-bossImg1.src = 'images/boss-img1.png';
+bossImg1.src = 'assets/images/boss-img1.png';
 const bossImg2 = new Image();
-bossImg2.src = 'images/boss-img2.png';
+bossImg2.src = 'assets/images/boss-img2.png';
 // Arena background
 const arenaFloorImg = new Image();
-arenaFloorImg.src = 'images/arena-floor.png';
+arenaFloorImg.src = 'assets/images/arena.png';
+
+// Power-up sprites
+const heartPowerupImg = new Image();
+heartPowerupImg.src = 'assets/images/heart-powerup.png';
+const triplePowerupImg = new Image();
+triplePowerupImg.src = 'assets/images/triple-powerup.png';
+const spreadPowerupImg = new Image();
+spreadPowerupImg.src = 'assets/images/spread-powerup.png';
+const rapidPowerupImg = new Image();
+rapidPowerupImg.src = 'assets/images/rapid-powerup.png';
+const autofirePowerupImg = new Image();
+autofirePowerupImg.src = 'assets/images/autofire-powerup.png';
 
 // Gun placement configuration (tweak these to fine-tune hand alignment)
 // Toggle to show/hide the visual gun sprite. When false, bullets will
@@ -138,9 +183,9 @@ const audioContext = new (window.AudioContext || window.webkitAudioContext)();
 // Enemy sfx pool (multiple variants) for randomization
 const enemySfxUrls = [
 
-    'audio/enemies4.wav',
-    'audio/enemies5.wav',
-    'audio/enemies7.wav',
+    'assets/audio/pop.mp3',
+    // 'audio/enemies5.wav',
+    // 'audio/enemies7.wav',
 
 ];
 let enemySfxBuffers = []; // Array<AudioBuffer|null>
@@ -170,15 +215,15 @@ async function loadAudioBuffer(url) {
 })();
 
 // Boss audio (intro stinger + looping theme)
-const bossIntroAudio = new Audio('audio/boss-sound.wav');
-const bossThemeAudio = new Audio('audio/boss-theme.mp3');
+const bossIntroAudio = new Audio('assets/audio/boss-sound.wav');
+const bossThemeAudio = new Audio('assets/audio/boss-theme.mp3');
 bossIntroAudio.preload = 'auto';
 bossThemeAudio.preload = 'auto';
 bossThemeAudio.loop = true;
-bossIntroAudio.volume = 0.9;
+bossIntroAudio.volume = 0.7;
 bossThemeAudio.volume = 0.7;
 // Variant 2 intro with slightly higher pitch/volume
-const boss2IntroAudio = new Audio('audio/boss-sound.wav');
+const boss2IntroAudio = new Audio('assets/audio/boss-sound.wav');
 boss2IntroAudio.preload = 'auto';
 try { boss2IntroAudio.playbackRate = 1.2; } catch (_) {}
 boss2IntroAudio.volume = 1.0;
@@ -186,17 +231,22 @@ boss2IntroAudio.volume = 1.0;
 // Shooting sound (HTMLAudio) with small pool to avoid stacking
 const SHOOT_POOL_SIZE = 6;
 const shootPool = Array.from({ length: SHOOT_POOL_SIZE }, () => {
-    const a = new Audio('audio/shooting-sound2.mp3');
+    const a = new Audio('assets/audio/shooting-sound2.mp3');
     a.preload = 'auto';
-    a.volume = 0.8; // keep user-adjusted volume
+    a.volume = 0.2; // keep user-adjusted volume
     return a;
 });
 let shootPoolIdx = 0;
 
 // Energy Ball cast sound
-const energyBallCastAudio = new Audio('audio/wave-sound.mp3');
+const energyBallCastAudio = new Audio('assets/audio/wave-sound.mp3');
 energyBallCastAudio.preload = 'auto';
 energyBallCastAudio.volume = .9;
+
+// Shotgun sound
+const shotgunAudio = new Audio('assets/audio/shotgun-sound.mp3');
+shotgunAudio.preload = 'auto';
+shotgunAudio.volume = 0.5;
 
 function stopAllShootSounds() {
     for (const a of shootPool) {
@@ -209,6 +259,12 @@ function playEnergyBallCast() {
     if (!soundEnabled) return;
     try { energyBallCastAudio.currentTime = 0; } catch (_) {}
     energyBallCastAudio.play().catch(() => {});
+}
+
+function playShotgunSound() {
+    if (!soundEnabled) return;
+    try { shotgunAudio.currentTime = 0; } catch (_) {}
+    shotgunAudio.play().catch(() => {});
 }
 
 function playBossIntro() {
@@ -275,7 +331,7 @@ function updateBosses() {
 }
 
 // Helper to play an AudioBuffer
-function playBuffer(buffer, { volume = 0.9, rate = .5 } = {}) {
+function playBuffer(buffer, { volume = 0.9, rate = .9 } = {}) {
     if (!buffer) return;
     const src = audioContext.createBufferSource();
     src.buffer = buffer;
@@ -288,7 +344,7 @@ function playBuffer(buffer, { volume = 0.9, rate = .5 } = {}) {
 
 
 // Sound effects
-function playSound(frequency, duration, type = 'sine', volume = 0.3) {
+function playSound(frequency, duration, type = 'sine', volume = 0.7) {
     if (!soundEnabled) return;
     
     const oscillator = audioContext.createOscillator();
@@ -373,7 +429,7 @@ function playHitSound() {
     if (!soundEnabled) return;
     
     // Further lower volume for enemy hit feedback
-    playSound(200, 120, 'sawtooth', 0.04);
+    playSound(200, 120, 'sawtooth', 0.20);
 }
 
 // Event listeners
@@ -450,11 +506,16 @@ function getGunMuzzleWorldPos() {
     const cosA = Math.cos(angle);
     const sinA = Math.sin(angle);
 
-    // Base hand/grip position relative to player center
-    const gripX = GUN_CONFIG.gripOffsetX;
-    const gripY = GUN_CONFIG.gripOffsetY;
+    // Base hand/grip position relative to player center (adjust for shotgun)
+    let gripX = GUN_CONFIG.gripOffsetX;
+    let gripY = GUN_CONFIG.gripOffsetY;
+    
+    if (hasShotgun) {
+        gripX = -2; // Match the adjusted grip position
+        gripY = -2;
+    }
 
-    if (!SHOW_GUN) {
+    if (!SHOW_GUN && !hasShotgun) {
         // No visible gun: place muzzle a bit forward from the hand along the aim,
         // so it looks like the projectile comes from the player's hands.
         const forward = player.width * PLAYER_MUZZLE.forwardScale;
@@ -468,17 +529,32 @@ function getGunMuzzleWorldPos() {
         };
     }
 
-    // Visible gun: compute muzzle using the gun sprite geometry
-    const gunW = Math.max(36, player.width * GUN_CONFIG.widthScale);
-    const aspect = (turretImg.naturalWidth && turretImg.naturalHeight)
-        ? (turretImg.naturalHeight / turretImg.naturalWidth)
+    // Visible gun or shotgun: compute muzzle using the gun sprite geometry
+    const gunW = Math.max(36, player.width * (hasShotgun ? 0.7 : GUN_CONFIG.widthScale));
+    const aspect = ((hasShotgun ? shotgunImg : turretImg).naturalWidth && (hasShotgun ? shotgunImg : turretImg).naturalHeight)
+        ? ((hasShotgun ? shotgunImg : turretImg).naturalHeight / (hasShotgun ? shotgunImg : turretImg).naturalWidth)
         : 0.5;
     const gunH = gunW * aspect;
-    const px = gunW * GUN_CONFIG.pivotX; // pivot inside drawn gun
-    const py = gunH * GUN_CONFIG.pivotY;
-    // Muzzle assumed near the far-right edge, slightly above pivot
-    const muzzleLocalX = gunW - px;
-    const muzzleLocalY = (0.5 * gunH - py) * 0.1; // subtle upward bias
+    
+    // Use different pivot points for shotgun
+    const pivotX = hasShotgun ? 0.55 : GUN_CONFIG.pivotX;
+    const pivotY = hasShotgun ? 0.45 : GUN_CONFIG.pivotY;
+    
+    const px = gunW * pivotX;
+    const py = gunH * pivotY;
+    
+    // Muzzle position - adjust for shotgun to align with center aim
+    let muzzleLocalX, muzzleLocalY;
+    if (hasShotgun) {
+        // For shotgun: position muzzle more forward and centered
+        muzzleLocalX = gunW * 0.85; // Further forward on shotgun
+        muzzleLocalY = 0; // Centered vertically
+    } else {
+        // Original calculation for regular gun
+        muzzleLocalX = gunW - px;
+        muzzleLocalY = (0.5 * gunH - py) * 0.1; // subtle upward bias
+    }
+    
     const offX = muzzleLocalX * cosA - muzzleLocalY * sinA;
     const offY = muzzleLocalX * sinA + muzzleLocalY * cosA;
     return {
@@ -492,45 +568,94 @@ function fireOnce() {
     const now = Date.now();
     if (now - lastShot < shootCooldown) return;
     lastShot = now;
-    playShootSound();
-
-    // Adjust bullet count based on upgrades and powerups (take the max effect)
-    let bulletCount = 1 + multiShotBonus;
-    if (activePowerup === 'triple') {
-        bulletCount = Math.max(bulletCount, 3);
-    } else if (activePowerup === 'spread') {
-        bulletCount = Math.max(bulletCount, 5);
-    }
-
-    const muzzle = getGunMuzzleWorldPos();
-    for (let i = 0; i < bulletCount; i++) {
-        let angle = muzzle.angle;
-        if (bulletCount > 1) {
-            const spread = 0.3; // Radians
-            angle += (i - (bulletCount - 1) / 2) * (spread / (bulletCount - 1));
+    
+    // Check if shotgun is equipped and has ammo
+    if (hasShotgun && shotgunAmmo > 0) {
+        // Fire shotgun
+        playShotgunSound();
+        shotgunAmmo--;
+        
+        const muzzle = getGunMuzzleWorldPos();
+        
+        // Fire multiple pellets in a spread pattern
+        for (let i = 0; i < SHOTGUN_PELLETS; i++) {
+            let angle = muzzle.angle;
+            // Add spread to each pellet
+            angle += (Math.random() - 0.5) * SHOTGUN_SPREAD;
+            
+            bullets.push({
+                x: muzzle.x,
+                y: muzzle.y,
+                vx: Math.cos(angle) * bulletSpeed * 1.2, // Slightly faster
+                vy: Math.sin(angle) * bulletSpeed * 1.2,
+                radius: 4, // Slightly smaller pellets
+                color: '#8d6e63',
+                damage: playerDamage * 0.8 // Slightly less damage per pellet
+            });
         }
-        bullets.push({
-            x: muzzle.x,
-            y: muzzle.y,
-            vx: Math.cos(angle) * bulletSpeed,
-            vy: Math.sin(angle) * bulletSpeed,
-            radius: 5,
-            color: '#5d4037',
-            damage: playerDamage
-        });
-    }
+        
+        // Check if shotgun is empty
+        if (shotgunAmmo <= 0) {
+            hasShotgun = false;
+            activePowerup = null;
+            powerupTimeLeft = 0;
+        }
+        
+        // Create muzzle flash particles for shotgun
+        const baseAngle = muzzle.angle;
+        for (let i = 0; i < 15; i++) { // More particles for shotgun
+            particles.push({
+                x: muzzle.x,
+                y: muzzle.y,
+                vx: Math.cos(baseAngle + (Math.random() - 0.5) * 0.5) * (Math.random() * 6 + 3),
+                vy: Math.sin(baseAngle + (Math.random() - 0.5) * 0.5) * (Math.random() * 6 + 3),
+                life: 25,
+                maxLife: 25
+            });
+        }
+        
+    } else {
+        // Fire normal weapon
+        playShootSound();
+        
+        // Adjust bullet count based on upgrades and powerups (take the max effect)
+        let bulletCount = 1 + multiShotBonus;
+        if (activePowerup === 'triple') {
+            bulletCount = Math.max(bulletCount, 3);
+        } else if (activePowerup === 'spread') {
+            bulletCount = Math.max(bulletCount, 5);
+        }
 
-    // Create muzzle flash particles
-    const baseAngle = muzzle.angle;
-    for (let i = 0; i < 10; i++) {
-        particles.push({
-            x: muzzle.x,
-            y: muzzle.y,
-            vx: Math.cos(baseAngle) * (Math.random() * 5 + 2),
-            vy: Math.sin(baseAngle) * (Math.random() * 5 + 2),
-            life: 20,
-            maxLife: 20
-        });
+        const muzzle = getGunMuzzleWorldPos();
+        for (let i = 0; i < bulletCount; i++) {
+            let angle = muzzle.angle;
+            if (bulletCount > 1) {
+                const spread = 0.3; // Radians
+                angle += (i - (bulletCount - 1) / 2) * (spread / (bulletCount - 1));
+            }
+            bullets.push({
+                x: muzzle.x,
+                y: muzzle.y,
+                vx: Math.cos(angle) * bulletSpeed,
+                vy: Math.sin(angle) * bulletSpeed,
+                radius: 5,
+                color: '#5d4037',
+                damage: playerDamage
+            });
+        }
+        
+        // Create muzzle flash particles for normal weapon
+        const baseAngle = muzzle.angle;
+        for (let i = 0; i < 10; i++) {
+            particles.push({
+                x: muzzle.x,
+                y: muzzle.y,
+                vx: Math.cos(baseAngle) * (Math.random() * 5 + 2),
+                vy: Math.sin(baseAngle) * (Math.random() * 5 + 2),
+                life: 20,
+                maxLife: 20
+            });
+        }
     }
 }
 function startGame() {
@@ -574,6 +699,9 @@ function startGame() {
     enemiesToSpawn = 0;
     autoFiring = false;
     holdingFire = false;
+    // Reset shotgun state
+    hasShotgun = false;
+    shotgunAmmo = 0;
     pausedForUpgrade = false;
     isPaused = false;
     stopBossTheme();
@@ -640,8 +768,13 @@ function updateHealth() {
 
 function updatePowerupDisplay() {
     if (activePowerup) {
-        powerupBar.style.width = `${(powerupTimeLeft / powerupMaxTime) * 100}%`;
-        powerupDisplay.querySelector('span').textContent = `POWER: ${activePowerup.toUpperCase()}`;
+        if (activePowerup === 'shotgun') {
+            powerupBar.style.width = `${(shotgunAmmo / SHOTGUN_MAX_AMMO) * 100}%`;
+            powerupDisplay.querySelector('span').textContent = `SHOTGUN: ${shotgunAmmo}/${SHOTGUN_MAX_AMMO}`;
+        } else {
+            powerupBar.style.width = `${(powerupTimeLeft / powerupMaxTime) * 100}%`;
+            powerupDisplay.querySelector('span').textContent = `POWER: ${activePowerup.toUpperCase()}`;
+        }
     } else {
         powerupBar.style.width = '0%';
         powerupDisplay.querySelector('span').textContent = 'POWER: NONE';
@@ -809,8 +942,23 @@ function spawnEnemy() {
             }
 
             // Randomize sprite and some stats
-            const img = Math.random() < 0.5 ? enemyImg : Math.random() < 0.5 ? enemyImg2 : enemyImg3;
-            const size = 55 + Math.random() * 50;
+            const enemyType = Math.random();
+            let img, isAnimated = false, animFrames = null;
+            
+            if (enemyType < 0.2) {
+                // 20% chance for new animated enemy
+                isAnimated = true;
+                animFrames = [ frameTwoImg,frameThreeImg,frameFourImg];
+                img = frameOneImg; // default frame
+            } else if (enemyType < 0.5) {
+                img = enemyImg;
+            } else if (enemyType < 0.75) {
+                img = enemyImg2;
+            } else {
+                img = enemyImg3;
+            }
+            
+            const size = 75 + Math.random() * 50;
             const spd = (1 + Math.random() * 1.5) * (1 + (round - 1) * 0.08);
             const hp = img === enemyImg ? 2 : 1;   // make one type a bit tankier
             const extraHp = Math.floor((round - 1) / 3);
@@ -823,7 +971,16 @@ function spawnEnemy() {
                 speed: spd,
                 color: '#8d6e63',
                 health: hp + extraHp,
-                img: img
+                maxHealth: hp + extraHp,
+                img: img,
+                // Animation properties
+                isAnimated: isAnimated,
+                animFrames: animFrames,
+                currentFrame: 0,
+                frameTimer: 0,
+                frameInterval: isAnimated ? (120 + Math.random() * 160) : 0, // randomized timing 120-280ms
+                // Spawn time for health-based pulsing
+                spawnTime: Date.now()
             });
             enemiesToSpawn--;
         }
@@ -879,19 +1036,84 @@ function spawnPowerup() {
         const y = 50 + Math.random() * (canvas.height - 100);
         
         // Random powerup type
-        const types = ['health', 'triple', 'spread', 'rapid', 'autofire'];
+        const types = ['health', 'triple', 'spread', 'rapid', 'autofire', 'shotgun', 'mystery'];
         const type = types[Math.floor(Math.random() * types.length)];
         
         powerups.push({
             x: x,
             y: y,
-            radius: 15,
+            radius: 13, // Reduced from 15 to make smaller
             type: type,
             color: type === 'health' ? '#f44336' : 
                    type === 'triple' ? '#2196f3' : 
                    type === 'spread' ? '#9c27b0' : 
-                   type === 'rapid' ? '#ff9800' : '#00bcd4'
+                   type === 'rapid' ? '#ff9800' : 
+                   type === 'autofire' ? '#00bcd4' : 
+                   type === 'shotgun' ? '#8d6e63' : '#ffd54f'
         });
+    }
+}
+
+// Apply a random good or bad effect for the 'mystery' power-up
+function applyMysteryEffect() {
+    // 60% good, 40% bad
+    const good = Math.random() < 0.6;
+    if (good) {
+        const roll = Math.floor(Math.random() * 5);
+        switch (roll) {
+            case 0:
+                // Big heal
+                playerHealth = Math.min(200, playerHealth + 80);
+                updateHealth();
+                break;
+            case 1:
+                // Rapid fire boost
+                activePowerup = 'rapid';
+                powerupTimeLeft = 14000;
+                powerupMaxTime = 14000;
+                shootCooldown = Math.max(40, (baseShootCooldown * fireRateMult) * 0.5);
+                break;
+            case 2:
+                // Triple shot
+                activePowerup = 'triple';
+                powerupTimeLeft = 12000;
+                powerupMaxTime = 12000;
+                break;
+            case 3:
+                // Spread shot
+                activePowerup = 'spread';
+                powerupTimeLeft = 10000;
+                powerupMaxTime = 10000;
+                break;
+            case 4:
+                // Full energy charge
+                addEnergyCharge(ENERGY_BALL_MAX);
+                break;
+        }
+    } else {
+        const roll = Math.floor(Math.random() * 3);
+        switch (roll) {
+            case 0:
+                // Damage player
+                playerHealth -= 40;
+                updateHealth();
+                if (playerHealth <= 0) gameOver();
+                break;
+            case 1:
+                // Gun jam: much slower fire rate temporarily
+                activePowerup = 'jam';
+                powerupTimeLeft = 8000;
+                powerupMaxTime = 8000;
+                shootCooldown = Math.max(120, (baseShootCooldown * fireRateMult) * 1.8);
+                break;
+            case 2:
+                // Slow movement temporarily
+                activePowerup = 'slow';
+                powerupTimeLeft = 6000;
+                powerupMaxTime = 6000;
+                player.speed = Math.max(2, (basePlayerSpeed * playerSpeedMult) * 0.6);
+                break;
+        }
     }
 }
 
@@ -1025,8 +1247,32 @@ function updateEnemies() {
         
         // Move towards player
         const angle = Math.atan2(player.y - enemy.y, player.x - enemy.x);
-        enemy.x += Math.cos(angle) * enemy.speed;
-        enemy.y += Math.sin(angle) * enemy.speed;
+        
+        // Base movement
+        const baseVx = Math.cos(angle) * enemy.speed;
+        const baseVy = Math.sin(angle) * enemy.speed;
+        
+        // Ground movement for all enemies (animated enemies get slight variation for organic feel)
+        if (enemy.isAnimated) {
+            // Slight speed variation for animated enemies to make movement more organic
+            const speedVariation = Math.sin(Date.now() * 0.001 + enemy.spawnTime * 0.001) * 0.15;
+            enemy.x += baseVx * (1 + speedVariation);
+            enemy.y += baseVy * (1 + speedVariation);
+        } else {
+            enemy.x += baseVx;
+            enemy.y += baseVy;
+        }
+        
+        // Update animation for animated enemies
+        if (enemy.isAnimated && enemy.animFrames) {
+            enemy.frameTimer += 16; // ~60fps
+            if (enemy.frameTimer >= enemy.frameInterval) {
+                enemy.currentFrame = (enemy.currentFrame + 1) % enemy.animFrames.length;
+                enemy.frameTimer = 0;
+                // Update current img reference
+                enemy.img = enemy.animFrames[enemy.currentFrame];
+            }
+        }
         
         // Check collision with player
         const dx = player.x - enemy.x;
@@ -1105,6 +1351,16 @@ function updatePowerups() {
                     shootCooldown = Math.max(35, (baseShootCooldown * fireRateMult) * 0.45); // fast cooldown during autofire
                     autoFiring = false; // will begin on next click
                     break;
+                case 'shotgun':
+                    hasShotgun = true;
+                    shotgunAmmo = SHOTGUN_MAX_AMMO;
+                    activePowerup = 'shotgun';
+                    powerupTimeLeft = 999999; // Unlimited time until ammo runs out
+                    powerupMaxTime = 999999;
+                    break;
+                case 'mystery':
+                    applyMysteryEffect();
+                    break;
             }
             
             updatePowerupDisplay();
@@ -1123,6 +1379,8 @@ function updatePowerupTimer() {
             autoFiring = false;
             // Restore to upgraded base cooldown
             shootCooldown = Math.max(60, baseShootCooldown * fireRateMult);
+            // Restore movement speed to upgraded base as well
+            player.speed = basePlayerSpeed * playerSpeedMult;
             updatePowerupDisplay();
         } else {
             updatePowerupDisplay();
@@ -1155,20 +1413,41 @@ function drawPlayer() {
     const bodyH = player.height;
     ctx.drawImage(tankImg, -bodyW / 2, -bodyH / 2, bodyW, bodyH);
 
-    // Draw and align gun to hands (only if SHOW_GUN)
-    if (SHOW_GUN) {
-        const gripX = GUN_CONFIG.gripOffsetX;
-        const gripY = GUN_CONFIG.gripOffsetY;
+    // Draw and align gun to hands (show shotgun if equipped, otherwise regular gun if SHOW_GUN)
+    if (hasShotgun || SHOW_GUN) {
+        let gripX = GUN_CONFIG.gripOffsetX;
+        let gripY = GUN_CONFIG.gripOffsetY;
+        
+        // Adjust grip position for shotgun
+        if (hasShotgun) {
+            gripX = -8; // Move shotgun more to the left (closer to center)
+            gripY = -2; // Slightly adjust vertical position
+        }
+        
         ctx.save();
         ctx.translate(gripX, gripY);
-        const gunW = Math.max(36, bodyW * GUN_CONFIG.widthScale);
-        const aspect = (turretImg.naturalWidth && turretImg.naturalHeight)
-            ? (turretImg.naturalHeight / turretImg.naturalWidth)
+        
+        const gunImg = hasShotgun ? shotgunImg : turretImg;
+        const gunW = Math.max(36, bodyW * (hasShotgun ? 0.7 : GUN_CONFIG.widthScale)); // Shotgun slightly smaller
+        const aspect = (gunImg.naturalWidth && gunImg.naturalHeight)
+            ? (gunImg.naturalHeight / gunImg.naturalWidth)
             : 0.5;
         const gunH = gunW * aspect;
-        const drawX = -gunW * GUN_CONFIG.pivotX;
-        const drawY = -gunH * GUN_CONFIG.pivotY;
-        ctx.drawImage(turretImg, drawX, drawY, gunW, gunH);
+        
+        // Adjust pivot point for shotgun
+        const pivotX = hasShotgun ? 0.15 : GUN_CONFIG.pivotX; // Shotgun pivot more to the left
+        const pivotY = hasShotgun ? 0.45 : GUN_CONFIG.pivotY; // Slightly adjust vertical pivot
+        
+        const drawX = -gunW * pivotX;
+        const drawY = -gunH * pivotY;
+        
+        // Add slight glow effect for shotgun
+        if (hasShotgun) {
+            ctx.shadowColor = 'rgba(141, 110, 99, 0.8)';
+            ctx.shadowBlur = 8;
+        }
+        
+        ctx.drawImage(gunImg, drawX, drawY, gunW, gunH);
         ctx.restore();
     }
 
@@ -1205,11 +1484,44 @@ function drawBullets() {
 
 function drawEnemies() {
     for (const enemy of enemies) {
+        ctx.save();
+        
+        // Calculate health-based pulsing
+        let healthRatio = 1;
+        if (enemy.maxHealth) {
+            healthRatio = enemy.health / enemy.maxHealth;
+        } else if (enemy.health !== undefined) {
+            // Backward compatibility - assume current health was max health initially
+            enemy.maxHealth = enemy.health;
+            healthRatio = 1;
+        }
+        
+        // Size pulsing based on health (lower health = more intense pulsing)
+        const time = Date.now();
+        const pulseIntensity = (1 - healthRatio) * 0.3; // 0 to 0.3 based on damage
+        const pulseOffset = Math.sin((time - enemy.spawnTime) * 0.008) * pulseIntensity;
+        const currentScale = 1 + pulseOffset;
+        
+        // Position (no rotation for animated enemies)
+        ctx.translate(enemy.x, enemy.y);
+        
+        // Apply health-based scaling
+        ctx.scale(currentScale, currentScale);
+        
         // Draw enemy using image (centered)
         const w = enemy.width;
         const h = enemy.height;
+        
+        // Add subtle glow effect for animated enemies
+        if (enemy.isAnimated) {
+            ctx.shadowColor = 'rgba(255, 100, 100, 0.4)';
+            ctx.shadowBlur = 8;
+        }
+        
         // Use the assigned sprite; default to enemyImg2 for older enemies without img
-        ctx.drawImage(enemy.img || enemyImg2, enemy.x - w / 2, enemy.y - h / 2, w, h);
+        ctx.drawImage(enemy.img || enemyImg2, -w / 2, -h / 2, w, h);
+        
+        ctx.restore();
     }
 }
 
@@ -1254,52 +1566,148 @@ function drawBossHealthBar() {
 }
 
 function drawPowerups() {
+    const t = Date.now();
     for (const powerup of powerups) {
+        // Animation offsets
+        const bob = Math.sin((t / 420) + (powerup.x * 0.01)) * 3; // vertical bobbing
+        const pulse = (Math.sin(t / 260) + 1) * 0.5; // 0..1
+        const px = powerup.x;
+        const py = powerup.y + bob;
+        // Try to draw sprite first
+        const sprite = getPowerupImage(powerup.type);
+        if (sprite && sprite.complete && sprite.naturalWidth) {
+            const size = powerup.radius * 3.5; // Reduced from 5 to 3.5 for smaller sprites
+            // Draw a contrasting halo and outline behind the sprite
+            ctx.save();
+            // Soft dark halo
+            const haloR = size * (0.50 + 0.10 * pulse); // Reduced halo size
+            const grad = ctx.createRadialGradient(px, py, haloR * 0.2, px, py, haloR);
+            grad.addColorStop(0, 'rgba(0,0,0,0.45)');
+            grad.addColorStop(1, 'rgba(0,0,0,0)');
+            ctx.fillStyle = grad;
+            ctx.beginPath();
+            ctx.arc(px, py, haloR, 0, Math.PI * 2);
+            ctx.fill();
+            // Bright ring matching powerup color for contrast (additive blend)
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.strokeStyle = powerup.color || '#ffffff';
+            ctx.lineWidth = Math.max(1.5, size * 0.08); // Slightly thinner line
+            ctx.beginPath();
+            ctx.arc(px, py, size * (0.45 + 0.04 * pulse), 0, Math.PI * 2); // Smaller ring
+            ctx.stroke();
+            ctx.restore();
+            ctx.restore();
+
+            // Draw the sprite on top
+            ctx.save();
+            // Soft colored shadow to lift sprite from background
+            ctx.shadowColor = powerup.color || 'rgba(255,255,255,0.8)';
+            ctx.shadowBlur = Math.max(6, size * 0.15); // Reduced shadow blur
+            ctx.drawImage(sprite, px - size / 2, py - size / 2, size, size);
+            ctx.restore();
+            // Skip vector fallback if we successfully drew a sprite
+            continue;
+        }
+
+        // Fallback: draw colored orb with symbol
+        ctx.save();
+        // Halo
+        const haloR2 = powerup.radius * (1.4 + 0.3 * pulse); // Reduced halo size
+        const grad2 = ctx.createRadialGradient(px, py, haloR2 * 0.2, px, py, haloR2);
+        grad2.addColorStop(0, 'rgba(0,0,0,0.45)');
+        grad2.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = grad2;
+        ctx.beginPath();
+        ctx.arc(px, py, haloR2, 0, Math.PI * 2);
+        ctx.fill();
+        // Base orb with additive glow
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
         ctx.fillStyle = powerup.color;
         ctx.beginPath();
-        ctx.arc(powerup.x, powerup.y, powerup.radius, 0, Math.PI * 2);
+        ctx.arc(px, py, powerup.radius, 0, Math.PI * 2);
         ctx.fill();
-        
+        ctx.restore();
+        // Outline
+        ctx.strokeStyle = '#000000';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(px, py, powerup.radius + 1, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+
         // Draw powerup symbol
         ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2.5;
         ctx.beginPath();
-        
+
         switch(powerup.type) {
             case 'health':
                 // Cross
-                ctx.moveTo(powerup.x - 8, powerup.y);
-                ctx.lineTo(powerup.x + 8, powerup.y);
-                ctx.moveTo(powerup.x, powerup.y - 8);
-                ctx.lineTo(powerup.x, powerup.y + 8);
+                ctx.moveTo(px - 8, py);
+                ctx.lineTo(px + 8, py);
+                ctx.moveTo(px, py - 8);
+                ctx.lineTo(px, py + 8);
                 break;
             case 'triple':
                 // Three lines
-                ctx.moveTo(powerup.x - 8, powerup.y - 5);
-                ctx.lineTo(powerup.x + 8, powerup.y - 5);
-                ctx.moveTo(powerup.x - 8, powerup.y);
-                ctx.lineTo(powerup.x + 8, powerup.y);
-                ctx.moveTo(powerup.x - 8, powerup.y + 5);
-                ctx.lineTo(powerup.x + 8, powerup.y + 5);
+                ctx.moveTo(px - 8, py - 5);
+                ctx.lineTo(px + 8, py - 5);
+                ctx.moveTo(px - 8, py);
+                ctx.lineTo(px + 8, py);
+                ctx.moveTo(px - 8, py + 5);
+                ctx.lineTo(px + 8, py + 5);
                 break;
             case 'spread':
                 // Star
                 for (let i = 0; i < 5; i++) {
                     const angle = (i * 2 * Math.PI / 5) - Math.PI/2;
-                    const x1 = powerup.x + Math.cos(angle) * 8;
-                    const y1 = powerup.y + Math.sin(angle) * 8;
-                    const x2 = powerup.x + Math.cos(angle + Math.PI) * 4;
-                    const y2 = powerup.y + Math.sin(angle + Math.PI) * 4;
+                    const x1 = px + Math.cos(angle) * 8;
+                    const y1 = py + Math.sin(angle) * 8;
+                    const x2 = px + Math.cos(angle + Math.PI) * 4;
+                    const y2 = py + Math.sin(angle + Math.PI) * 4;
                     ctx.moveTo(x1, y1);
                     ctx.lineTo(x2, y2);
                 }
                 break;
             case 'rapid':
                 // Lightning bolt
-                ctx.moveTo(powerup.x - 6, powerup.y - 8);
-                ctx.lineTo(powerup.x + 2, powerup.y - 2);
-                ctx.lineTo(powerup.x - 4, powerup.y + 2);
-                ctx.lineTo(powerup.x + 6, powerup.y + 8);
+                ctx.moveTo(px - 6, py - 8);
+                ctx.lineTo(px + 2, py - 2);
+                ctx.lineTo(px - 4, py + 2);
+                ctx.lineTo(px + 6, py + 8);
+                break;
+            case 'autofire':
+                // Concentric arcs implying continuous fire
+                for (let r = 4; r <= 8; r += 2) {
+                    ctx.moveTo(px + r, py);
+                    ctx.arc(px, py, r, 0, Math.PI * 2);
+                }
+                break;
+            case 'shotgun':
+                // Draw shotgun barrel lines
+                ctx.moveTo(px - 8, py - 3);
+                ctx.lineTo(px + 8, py - 3);
+                ctx.moveTo(px - 8, py + 3);
+                ctx.lineTo(px + 8, py + 3);
+                // Draw grip
+                ctx.moveTo(px - 6, py - 3);
+                ctx.lineTo(px - 6, py + 6);
+                ctx.lineTo(px - 2, py + 6);
+                break;
+            case 'mystery':
+                // Draw a '?' character
+                ctx.stroke(); // finish previous path before text
+                ctx.save();
+                ctx.fillStyle = '#ffffff';
+                ctx.font = "bold 14px 'Courier New', monospace";
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('?', px, py + 1);
+                ctx.restore();
+                // restart path to avoid merging states
+                ctx.beginPath();
                 break;
         }
         
