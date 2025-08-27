@@ -184,8 +184,8 @@ const audioContext = new (window.AudioContext || window.webkitAudioContext)();
 const enemySfxUrls = [
 
     'assets/audio/pop.mp3',
-    // 'audio/enemies5.wav',
-    // 'audio/enemies7.wav',
+    'assets/audio/enemies4.wav',
+    'assets/audio/enemies7.wav',
 
 ];
 let enemySfxBuffers = []; // Array<AudioBuffer|null>
